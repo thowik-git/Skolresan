@@ -176,6 +176,10 @@
       <div class="sugg"></div>
     </div>
     <div class="field">
+      <label for="sWalk">🚶 Längsta gångavstånd till hållplats (meter)</label>
+      <input id="sWalk" type="number" inputmode="numeric" min="0" max="3000" step="50" placeholder="500">
+    </div>
+    <div class="field">
       <label for="sKey">ResRobot API-nyckel (Trafiklab)</label>
       <input id="sKey" placeholder="Lämna tomt för demoläge" inputmode="text" spellcheck="false">
     </div>
@@ -194,10 +198,11 @@
   const STORE = 'skolresan.v1';
 
   // ---------- Lagring ----------
-  let cfg = { key:'', home:null, school:null, busOnly:true };
+  let cfg = { key:'', home:null, school:null, busOnly:true, maxWalk:500 };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch(e){}
   const save = () => { try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch(e){} };
   const live = () => !!(cfg.key && cfg.key.trim());
+  const maxWalk = () => Number.isFinite(+cfg.maxWalk) ? +cfg.maxWalk : 500;
 
   // ---------- Hjälpare ----------
   const pad = n => String(n).padStart(2,'0');
@@ -275,6 +280,9 @@
     const params = { originId:from.id, destId:to.id, date:ymd(when), time:hm(when), numF:6, passlist:0 };
     if (arrival) { params.searchForArrival = 1; delete params.numF; } // ResRobot godtar inte numB=6; låt API:t välja antal
     if (cfg.busOnly) params.products = 8 + 128; // expressbuss + buss
+    const mw = maxWalk();
+    params.originWalk = `1,0,${mw}`;
+    params.destWalk = `1,0,${mw}`;
     const j = await apiGet('trip', params);
     return arr(j.Trip).map(tr => {
       const raw = arr(tr.LegList && tr.LegList.Leg);
@@ -287,12 +295,13 @@
             operator: p.operator || p.operatorInfo?.name || 'Okänt bolag',
             cat: p.catOutL || p.catOut || 'Buss', direction: l.direction || l.Destination.name };
         }
-        return { type:'WALK', dur: Math.max(1, Math.round((d.t - o.t)/60000)), dist:l.dist };
+        const wd = Math.max(1, Math.round((d.t - o.t)/60000));
+        return { type:'WALK', dur: wd, dist: l.dist != null ? +l.dist : null };
       });
       const first = raw[0], last = raw[raw.length-1];
       const o = legTime(first.Origin), d = legTime(last.Destination);
       return { dep:o.t, arr:d.t, depRt:o.rt, arrRt:d.rt, legs };
-    });
+    }).filter(t => t.legs.every(l => l.type !== 'WALK' || l.dist == null || l.dist <= maxWalk()));
   }
 
   // ---------- Autocomplete ----------
@@ -364,7 +373,7 @@
   const sHome = $('#sHome'), sSchool = $('#sSchool');
   autocomplete(sHome); autocomplete(sSchool);
   function openSettings(){
-    setStop(sHome, cfg.home); setStop(sSchool, cfg.school); $('#sKey').value = cfg.key || '';
+    setStop(sHome, cfg.home); setStop(sSchool, cfg.school); $('#sKey').value = cfg.key || ''; $('#sWalk').value = cfg.maxWalk;
     try { dlg.showModal(); } catch(e){ dlg.setAttribute('open',''); }
   }
   $('#openSettings').onclick = openSettings;
@@ -374,6 +383,8 @@
     const newKey = $('#sKey').value.trim();
     const modeChanged = !!newKey !== live() || newKey !== cfg.key;
     cfg.key = newKey;
+    const w = parseInt($('#sWalk').value, 10);
+    cfg.maxWalk = Number.isFinite(w) && w >= 0 ? Math.min(w, 3000) : 500;
     cfg.home = sHome._stop || (sHome.value.trim() ? cfg.home : null);
     cfg.school = sSchool._stop || (sSchool.value.trim() ? cfg.school : null);
     if (modeChanged && !sHome._stop) cfg.home = null;   // hållplats-id skiljer mellan demo och live
@@ -418,7 +429,7 @@
 
   function render(){
     const out = $('#out');
-    if (!lastTrips.length) { out.innerHTML = `<div class="status">Inga resor hittades för den tiden.${cfg.busOnly ? ' Prova att slå av ”Endast buss”.' : ''}</div>`; return; }
+    if (!lastTrips.length) { out.innerHTML = `<div class="status">Inga resor hittades för den tiden.${cfg.busOnly ? ' Prova att slå av ”Endast buss”.' : ''} Längsta gångavstånd är ${maxWalk()} m – kan ändras under ⚙️.</div>`; return; }
     const ops = [...new Set(lastTrips.flatMap(opsOf))].sort((a,b)=>a.localeCompare(b,'sv'));
     const shown = lastTrips.filter(t => opFilter === 'Alla' || opsOf(t).includes(opFilter));
     const fastest = Math.min(...shown.map(t => mins(t.depRt||t.dep, t.arrRt||t.arr)));
