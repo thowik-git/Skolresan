@@ -273,7 +273,7 @@
 
   async function liveTrips(from, to, when, arrival){
     const params = { originId:from.id, destId:to.id, date:ymd(when), time:hm(when), numF:6, passlist:0 };
-    if (arrival) { params.searchForArrival = 1; delete params.numF; params.numB = 6; }
+    if (arrival) { params.searchForArrival = 1; delete params.numF; } // ResRobot godtar inte numB=6; låt API:t välja antal
     if (cfg.busOnly) params.products = 8 + 128; // expressbuss + buss
     const j = await apiGet('trip', params);
     return arr(j.Trip).map(tr => {
