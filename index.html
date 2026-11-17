@@ -97,7 +97,30 @@
   .step .sub{color:var(--muted);font-size:13px}
   .more{width:100%;margin-top:12px;border:1.5px solid var(--line);background:#fff;border-radius:14px;padding:14px;font-size:16px;font-weight:650;color:var(--accent);cursor:pointer}
 
-  dialog{border:0;border-radius:22px;padding:0;width:min(520px,94vw);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .kids{display:grid;gap:10px;margin-bottom:12px}
+  .kid{background:var(--card);border-radius:var(--r);box-shadow:0 1px 2px rgba(0,0,0,.06);padding:12px 12px 12px}
+  .kid .kname{font-size:15px;font-weight:750;margin:0 0 8px 4px}
+  .kid .kbtns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+  .kid button{border:0;border-radius:14px;background:var(--accent-soft);color:var(--accent);padding:12px;font-size:16px;font-weight:700;text-align:left;cursor:pointer}
+  .kid button small{display:block;font-size:13px;font-weight:550;color:var(--ink);opacity:.7;margin-top:3px}
+  .kid button:disabled{background:#eef0f3;color:var(--muted)}
+  .ctx{background:var(--accent);color:#fff;border-radius:var(--r);padding:14px 16px;margin-top:14px}
+  .ctx b{display:block;font-size:18px}
+  .ctx span{font-size:14px;opacity:.9}
+  .trip.fit{border-color:var(--good)}
+  .tag.fit{background:#e3f4ec;color:var(--good)}
+  .dlg h3{font-size:17px;margin:20px 0 8px;padding-top:14px;border-top:1px solid var(--line)}
+  .kedit{border:1.5px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+  .kedit .nm{width:100%;font-size:17px;font-weight:700;border:0;border-bottom:1.5px solid var(--line);padding:4px 2px 8px;margin-bottom:8px;outline:none;color:var(--ink);background:none}
+  .sched{display:grid;grid-template-columns:40px minmax(0,1fr) minmax(0,1fr);gap:6px 8px;align-items:center}
+  .sched .h{font-size:12px;color:var(--muted);font-weight:700}
+  .sched span{font-size:15px;font-weight:650}
+  .sched input{width:100%;font-size:16px;padding:8px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);min-width:0}
+  .ics{display:block;margin-top:10px;font-size:14px;color:var(--accent);font-weight:650;cursor:pointer}
+  .ics input{display:none}
+  .icsmsg{font-size:13px;color:var(--muted);margin-top:4px}
+  .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+  dialog{border:0;max-height:92vh;border-radius:22px;padding:0;width:min(520px,94vw);box-shadow:0 20px 60px rgba(0,0,0,.25)}
   dialog::backdrop{background:rgba(20,23,28,.35)}
   .dlg{padding:20px}
   .dlg h2{margin:0 0 12px;font-size:21px}
@@ -120,6 +143,8 @@
   <div class="banner" id="demoBanner" hidden>
     <b>Demoläge</b> – tiderna är påhittade. Lägg in din ResRobot-nyckel för riktiga avgångar. <button id="bannerSettings">Inställningar</button>
   </div>
+
+  <div class="kids" id="kids"></div>
 
   <div class="quick">
     <button id="toSchool">🏠 → 🏫 Till skolan<small id="toSchoolSub">Ställ in hem och skola</small></button>
@@ -179,6 +204,13 @@
       <label for="sWalk">🚶 Längsta gångavstånd till hållplats (meter)</label>
       <input id="sWalk" type="number" inputmode="numeric" min="0" max="3000" step="50" placeholder="500">
     </div>
+    <h3>🎒 Barnens schema</h3>
+    <div id="kidsEdit"></div>
+    <div class="two">
+      <div class="field"><label for="sMargin">Framme före lektion (min)</label><input id="sMargin" type="number" inputmode="numeric" min="0" max="60"></div>
+      <div class="field"><label for="sAfter">Från lektion till buss (min)</label><input id="sAfter" type="number" inputmode="numeric" min="0" max="60"></div>
+    </div>
+    <h3>🔑 API</h3>
     <div class="field">
       <label for="sKey">ResRobot API-nyckel (Trafiklab)</label>
       <input id="sKey" placeholder="Lämna tomt för demoläge" inputmode="text" spellcheck="false">
@@ -198,8 +230,10 @@
   const STORE = 'skolresan.v1';
 
   // ---------- Lagring ----------
-  let cfg = { key:'', home:null, school:null, busOnly:true, maxWalk:500 };
+  let cfg = { key:'', home:null, school:null, busOnly:true, maxWalk:500, margin:10, after:5,
+    kids:[{ name:'Nils', first:{}, last:{} }, { name:'Olle', first:{}, last:{} }] };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch(e){}
+  if (!Array.isArray(cfg.kids) || !cfg.kids.length) cfg.kids = [{ name:'Nils', first:{}, last:{} }, { name:'Olle', first:{}, last:{} }];
   const save = () => { try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch(e){} };
   const live = () => !!(cfg.key && cfg.key.trim());
   const maxWalk = () => Number.isFinite(+cfg.maxWalk) ? +cfg.maxWalk : 500;
@@ -365,8 +399,148 @@
     if (!cfg.home || !cfg.school) return openSettings();
     setStop(fromI, cfg[a]); setStop(toI, cfg[b]); markQuick(); search();
   }
-  $('#toSchool').onclick = () => quick('home','school');
-  $('#toHome').onclick = () => quick('school','home');
+  $('#toSchool').onclick = () => { ctx = null; quick('home','school'); };
+  $('#toHome').onclick = () => { ctx = null; quick('school','home'); };
+
+  // ---------- Barnens schema ----------
+  const WD = ['Sön','Mån','Tis','Ons','Tor','Fre','Lör'];
+  const WDL = ['söndag','måndag','tisdag','onsdag','torsdag','fredag','lördag'];
+  let ctx = null;   // { title, sub, kind:'arr'|'dep', target:Date }
+
+  const atTime = (day, t) => { const [H,M] = t.split(':').map(Number); const d = new Date(day); d.setHours(H, M, 0, 0); return d; };
+  function nextSchoolDay(kid, key, isDone){
+    const now = new Date();
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(now); d.setDate(now.getDate() + i); d.setHours(0,0,0,0);
+      const t = kid[key][d.getDay()];
+      if (!t) continue;
+      if (i === 0 && isDone(atTime(d, t), now)) continue;
+      return { day:d, t, at:atTime(d, t) };
+    }
+    return null;
+  }
+  const dayLabel = d => {
+    const t = new Date(); t.setHours(0,0,0,0);
+    const diff = Math.round((d - t) / 864e5);
+    return diff === 0 ? 'Idag' : diff === 1 ? 'Imorgon' : WDL[d.getDay()][0].toUpperCase() + WDL[d.getDay()].slice(1);
+  };
+  const addMin = (d, m) => new Date(d.getTime() + m*60000);
+
+  function plan(kid, dir){
+    if (dir === 'to') {
+      // Nästa första lektion som inte redan har börjat
+      const n = nextSchoolDay(kid, 'first', (at, now) => now > at);
+      return n && { ...n, target: addMin(n.at, -cfg.margin) };
+    }
+    // Hem: sista lektion idag så länge det är inom 3 h efter, annars nästa skoldag
+    const n = nextSchoolDay(kid, 'last', (at, now) => now > addMin(at, 180));
+    return n && { ...n, target: addMin(n.at, cfg.after) };
+  }
+
+  function renderKids(){
+    const box = $('#kids');
+    const kids = cfg.kids.filter(k => k.name && (Object.keys(k.first).length || Object.keys(k.last).length));
+    if (!kids.length) { box.innerHTML = ''; return; }
+    box.innerHTML = kids.map(k => {
+      const i = cfg.kids.indexOf(k);
+      const a = plan(k, 'to'), b = plan(k, 'home');
+      return `<div class="kid"><div class="kname">🎒 ${esc(k.name)}</div><div class="kbtns">
+        <button data-k="${i}" data-d="to" ${a ? '' : 'disabled'}>🏫 Till skolan<small>${a ? `${dayLabel(a.day)} · lektion ${a.t}` : 'Inget schema'}</small></button>
+        <button data-k="${i}" data-d="home" ${b ? '' : 'disabled'}>🏠 Hem<small>${b ? `${dayLabel(b.day)} · slutar ${b.t}` : 'Inget schema'}</small></button>
+      </div></div>`;
+    }).join('');
+    box.querySelectorAll('button[data-k]').forEach(btn => btn.onclick = () => kidSearch(cfg.kids[+btn.dataset.k], btn.dataset.d));
+  }
+
+  function setMode(m){
+    mode = m;
+    [...$('#mode').children].forEach(x => x.classList.toggle('on', x.dataset.m === m));
+    $('#when').classList.toggle('show', m !== 'now');
+  }
+
+  function kidSearch(kid, dir){
+    if (!cfg.home || !cfg.school) return openSettings();
+    const p = plan(kid, dir); if (!p) return;
+    if (dir === 'to') { setStop(fromI, cfg.home); setStop(toI, cfg.school); setMode('arr'); }
+    else { setStop(fromI, cfg.school); setStop(toI, cfg.home); setMode('dep'); }
+    $('#date').value = ymd(p.target); $('#time').value = hm(p.target);
+    markQuick();
+    const dl = dayLabel(p.day).toLowerCase();
+    ctx = dir === 'to'
+      ? { kind:'arr', target:p.target, title:`${kid.name} till skolan ${dl}`, sub:`Första lektion ${p.t} · framme senast ${hm(p.target)}` }
+      : { kind:'dep', target:p.target, title:`${kid.name} hem ${dl}`, sub:`Slutar ${p.t} · bussar från ${hm(p.target)}` };
+    search();
+  }
+
+  // Import av kalenderfil (.ics)
+  function parseICS(text){
+    text = text.replace(/\r?\n[ \t]/g, '');
+    const parse = v => {
+      const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?(Z)?$/.exec(v.trim());
+      if (!m) return null;
+      const [ , y, mo, d, H, M, S, z] = m;
+      return z ? new Date(Date.UTC(+y, mo-1, +d, +H, +M, +(S||0))) : new Date(+y, mo-1, +d, +H, +M, +(S||0));
+    };
+    const days = {};
+    for (const ev of text.split('BEGIN:VEVENT').slice(1)) {
+      const ds = /\nDTSTART[^:\n]*:([^\n\r]+)/.exec('\n' + ev), de = /\nDTEND[^:\n]*:([^\n\r]+)/.exec('\n' + ev);
+      const a = ds && parse(ds[1]), b = de && parse(de[1]);
+      if (!a || !b) continue;              // heldagshändelser hoppas över
+      const k = ymd(a);
+      const o = days[k] || (days[k] = { day:new Date(a.getFullYear(), a.getMonth(), a.getDate()), first:a, last:b });
+      if (a < o.first) o.first = a; if (b > o.last) o.last = b;
+    }
+    const today = new Date(); today.setHours(0,0,0,0);
+    const res = { first:{}, last:{} }; let n = 0;
+    for (let wd = 1; wd <= 5; wd++) {
+      const list = Object.values(days).filter(o => o.day.getDay() === wd).sort((x,y) => x.day - y.day);
+      if (!list.length) continue;
+      const pick = list.find(o => o.day >= today) || list[list.length-1];
+      res.first[wd] = hm(pick.first); res.last[wd] = hm(pick.last); n++;
+    }
+    return { ...res, n, events: Object.keys(days).length };
+  }
+
+  function renderKidsEdit(){
+    $('#kidsEdit').innerHTML = cfg.kids.map((k, i) => `
+      <div class="kedit" data-i="${i}">
+        <input class="nm" value="${esc(k.name)}" placeholder="Namn">
+        <div class="sched">
+          <div></div><div class="h">Första lektion</div><div class="h">Sista slutar</div>
+          ${[1,2,3,4,5].map(wd => `<span>${WD[wd]}</span>
+            <input type="time" data-f="${wd}" value="${esc(k.first[wd] || '')}">
+            <input type="time" data-l="${wd}" value="${esc(k.last[wd] || '')}">`).join('')}
+        </div>
+        <label class="ics">📅 Importera schema från kalenderfil (.ics)<input type="file" accept=".ics,text/calendar"></label>
+        <div class="icsmsg"></div>
+      </div>`).join('');
+    $('#kidsEdit').querySelectorAll('.kedit').forEach(box => {
+      box.querySelector('input[type=file]').onchange = async e => {
+        const f = e.target.files[0]; if (!f) return;
+        const msg = box.querySelector('.icsmsg');
+        try {
+          const r = parseICS(await f.text());
+          if (!r.n) { msg.textContent = 'Hittade inga lektioner med klockslag i filen.'; return; }
+          for (let wd = 1; wd <= 5; wd++) {
+            if (r.first[wd]) box.querySelector(`[data-f="${wd}"]`).value = r.first[wd];
+            if (r.last[wd]) box.querySelector(`[data-l="${wd}"]`).value = r.last[wd];
+          }
+          msg.textContent = `Läste ${r.events} skoldagar – tiderna är ifyllda för ${r.n} veckodagar. Tryck Spara.`;
+        } catch(err) { msg.textContent = 'Kunde inte läsa filen.'; }
+        e.target.value = '';
+      };
+    });
+  }
+  function readKidsEdit(){
+    return [...$('#kidsEdit').querySelectorAll('.kedit')].map(box => {
+      const k = { name: box.querySelector('.nm').value.trim(), first:{}, last:{} };
+      for (let wd = 1; wd <= 5; wd++) {
+        const a = box.querySelector(`[data-f="${wd}"]`).value, b = box.querySelector(`[data-l="${wd}"]`).value;
+        if (a) k.first[wd] = a; if (b) k.last[wd] = b;
+      }
+      return k;
+    });
+  }
 
   // ---------- Inställningar ----------
   const dlg = $('#settings');
@@ -374,6 +548,7 @@
   autocomplete(sHome); autocomplete(sSchool);
   function openSettings(){
     setStop(sHome, cfg.home); setStop(sSchool, cfg.school); $('#sKey').value = cfg.key || ''; $('#sWalk').value = cfg.maxWalk;
+    $('#sMargin').value = cfg.margin; $('#sAfter').value = cfg.after; renderKidsEdit();
     try { dlg.showModal(); } catch(e){ dlg.setAttribute('open',''); }
   }
   $('#openSettings').onclick = openSettings;
@@ -385,16 +560,19 @@
     cfg.key = newKey;
     const w = parseInt($('#sWalk').value, 10);
     cfg.maxWalk = Number.isFinite(w) && w >= 0 ? Math.min(w, 3000) : 500;
+    const num = (id, def) => { const v = parseInt($(id).value, 10); return Number.isFinite(v) && v >= 0 ? Math.min(v, 60) : def; };
+    cfg.margin = num('#sMargin', 10); cfg.after = num('#sAfter', 5);
+    cfg.kids = readKidsEdit();
     cfg.home = sHome._stop || (sHome.value.trim() ? cfg.home : null);
     cfg.school = sSchool._stop || (sSchool.value.trim() ? cfg.school : null);
     if (modeChanged && !sHome._stop) cfg.home = null;   // hållplats-id skiljer mellan demo och live
     if (modeChanged && !sSchool._stop) cfg.school = null;
-    save(); refreshQuick(); markQuick(); dlg.close();
+    save(); refreshQuick(); markQuick(); renderKids(); dlg.close();
     if (modeChanged) { setStop(fromI, null); setStop(toI, null); $('#out').innerHTML=''; }
   };
 
   // ---------- Sök ----------
-  $('#form').addEventListener('submit', e => { e.preventDefault(); search(); });
+  $('#form').addEventListener('submit', e => { e.preventDefault(); ctx = null; search(); });
 
   function whenNow(){
     if (mode === 'now') return { when:new Date(), arrival:false };
@@ -429,16 +607,21 @@
 
   function render(){
     const out = $('#out');
-    if (!lastTrips.length) { out.innerHTML = `<div class="status">Inga resor hittades för den tiden.${cfg.busOnly ? ' Prova att slå av ”Endast buss”.' : ''} Längsta gångavstånd är ${maxWalk()} m – kan ändras under ⚙️.</div>`; return; }
+    if (!lastTrips.length) { out.innerHTML = `${ctx ? `<div class="ctx"><b>${esc(ctx.title)}</b><span>${esc(ctx.sub)}</span></div>` : ''}<div class="status">Inga resor hittades för den tiden.${cfg.busOnly ? ' Prova att slå av ”Endast buss”.' : ''} Längsta gångavstånd är ${maxWalk()} m – kan ändras under ⚙️.</div>`; return; }
     const ops = [...new Set(lastTrips.flatMap(opsOf))].sort((a,b)=>a.localeCompare(b,'sv'));
     const shown = lastTrips.filter(t => opFilter === 'Alla' || opsOf(t).includes(opFilter));
     const fastest = Math.min(...shown.map(t => mins(t.depRt||t.dep, t.arrRt||t.arr)));
     const now = new Date();
     const firstUpcoming = shown.findIndex(t => (t.depRt||t.dep) >= now);
+    let fit = -1;
+    if (ctx && ctx.kind === 'arr') {
+      shown.forEach((t, i) => { if ((t.arrRt||t.arr) <= ctx.target && (fit < 0 || (t.depRt||t.dep) > (shown[fit].depRt||shown[fit].dep))) fit = i; });
+    } else if (ctx) fit = shown.findIndex(t => (t.depRt||t.dep) >= ctx.target);
+    const ctxHTML = ctx ? `<div class="ctx"><b>${esc(ctx.title)}</b><span>${esc(ctx.sub)}</span></div>` : '';
 
-    out.innerHTML = `
+    out.innerHTML = `${ctxHTML}
       ${ops.length > 1 ? `<div class="filters">${['Alla', ...ops].map(o => `<button class="chip ${o===opFilter?'on':''}" data-op="${esc(o)}">${esc(o)}</button>`).join('')}</div>` : '<div style="height:4px"></div>'}
-      <div class="trips">${shown.map((t,i) => tripHTML(t, i, fastest, now, i === firstUpcoming)).join('')}</div>
+      <div class="trips">${shown.map((t,i) => tripHTML(t, i, fastest, now, !ctx && i === firstUpcoming, i === fit)).join('')}</div>
       <button class="more" id="more">Visa senare resor</button>`;
 
     out.querySelectorAll('.chip').forEach(c => c.onclick = () => { opFilter = c.dataset.op; render(); });
@@ -446,7 +629,7 @@
     const m = $('#more'); if (m) m.onclick = () => search(true);
   }
 
-  function tripHTML(t, i, fastest, now, next){
+  function tripHTML(t, i, fastest, now, next, fit){
     const dep = t.depRt || t.dep, arr = t.arrRt || t.arr;
     const d = mins(dep, arr);
     const jny = t.legs.filter(l => l.type === 'JNY');
@@ -471,10 +654,11 @@
       : `<div class="step"><b></b><div class="sub">🚶 Gå ${l.dur} min${l.dist ? ` (${l.dist} m)` : ''}</div></div>`).join('');
 
     const tags = [];
+    if (fit) tags.push('✓ Passar bäst');
     if (next) tags.push('Nästa avgång');
     if (d === fastest) tags.push('Snabbast');
-    return `<div class="trip ${next ? 'best' : ''}">
-      ${tags.length ? `<span class="tag">${tags.join(' · ')}</span>` : ''}
+    return `<div class="trip ${fit ? 'fit' : next ? 'best' : ''}">
+      ${tags.length ? `<span class="tag ${fit ? 'fit' : ''}">${tags.join(' · ')}</span>` : ''}
       <div class="top">
         <div><div class="times">${hm(dep)}<span class="arrow">→</span>${hm(arr)}</div>${rt}</div>
         <div class="dur"><b>${d}</b><span>min</span></div>
@@ -486,6 +670,8 @@
   }
 
   refreshQuick();
+  renderKids();
+  setInterval(renderKids, 60000);
   if (!live() && !cfg.home) setTimeout(openSettings, 300);
   if (cfg.home && cfg.school) { setStop(fromI, cfg.home); setStop(toI, cfg.school); markQuick(); }
 })();
